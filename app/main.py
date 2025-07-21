@@ -146,3 +146,45 @@ async def get_recommendations(user_id: str):
                 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get recommendations: {str(e)}")
+
+@app.get("/book/{isbn}")
+async def get_book_details(isbn: str):
+    try:
+        if not RAKUTEN_APP_ID:
+            raise HTTPException(status_code=500, detail="Rakuten API Application ID not configured")
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://app.rakuten.co.jp/services/api/BooksBook/Search/20170404",
+                params={
+                    "format": "json",
+                    "isbn": isbn,
+                    "applicationId": RAKUTEN_APP_ID
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'Items' in data and len(data['Items']) > 0:
+                    item = data['Items'][0]['Item']
+                    book_details = {
+                        "title": item.get("title", ""),
+                        "author": item.get("author", ""),
+                        "summary": item.get("itemCaption", ""),
+                        "publisherName": item.get("publisherName", ""),
+                        "salesDate": item.get("salesDate", ""),
+                        "isbn": item.get("isbn", ""),
+                        "largeImageUrl": item.get("largeImageUrl", ""),
+                        "itemPrice": item.get("itemPrice", 0),
+                        "itemUrl": item.get("itemUrl", ""),
+                        "reviewCount": item.get("reviewCount", 0),
+                        "reviewAverage": item.get("reviewAverage", "0.00")
+                    }
+                    return book_details
+                else:
+                    raise HTTPException(status_code=404, detail="Book not found")
+            else:
+                raise HTTPException(status_code=500, detail=f"Rakuten API error: {response.status_code}")
+                
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get book details: {str(e)}")
