@@ -53,6 +53,43 @@ async def create_swipe(swipe: SwipeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to record swipe: {str(e)}")
 
+@app.get("/favorites/{user_id}")
+async def get_favorites(user_id: str):
+    try:
+        liked_swipes = supabase.table("swipes").select("book_isbn").eq("user_id", user_id).eq("liked", True).execute()
+        
+        if not liked_swipes.data:
+            return {"Items": []}
+        
+        isbn_list = [swipe["book_isbn"] for swipe in liked_swipes.data if swipe["book_isbn"]]
+        
+        if not isbn_list:
+            return {"Items": []}
+        
+        if not RAKUTEN_APP_ID:
+            raise HTTPException(status_code=500, detail="Rakuten API Application ID not configured")
+        
+        isbn_string = ",".join(isbn_list)
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://app.rakuten.co.jp/services/api/BooksBook/Search/20170404",
+                params={
+                    "format": "json",
+                    "isbn": isbn_string,
+                    "applicationId": RAKUTEN_APP_ID,
+                    "hits": 30
+                }
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(status_code=500, detail=f"Rakuten API error: {response.status_code}")
+                
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get favorites: {str(e)}")
+
 @app.get("/recommendations/{user_id}")
 async def get_recommendations(user_id: str):
     try:
