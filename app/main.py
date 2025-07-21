@@ -34,6 +34,8 @@ class SwipeRequest(BaseModel):
     book_isbn: str
     liked: bool
     author: str
+    title: str
+    cover_image_url: str
 
 @app.get("/healthz")
 async def healthz():
@@ -46,7 +48,9 @@ async def create_swipe(swipe: SwipeRequest):
             "user_id": swipe.user_id,
             "book_isbn": swipe.book_isbn,
             "liked": swipe.liked,
-            "author": swipe.author
+            "author": swipe.author,
+            "title": swipe.title,
+            "cover_image_url": swipe.cover_image_url
         }).execute()
         
         return {"message": "Swipe recorded successfully", "data": result.data}
@@ -56,36 +60,22 @@ async def create_swipe(swipe: SwipeRequest):
 @app.get("/favorites/{user_id}")
 async def get_favorites(user_id: str):
     try:
-        liked_swipes = supabase.table("swipes").select("book_isbn").eq("user_id", user_id).eq("liked", True).execute()
+        liked_swipes = supabase.table("swipes").select("book_isbn, title, author, cover_image_url").eq("user_id", user_id).eq("liked", True).execute()
         
         if not liked_swipes.data:
             return {"Items": []}
         
-        isbn_list = [swipe["book_isbn"] for swipe in liked_swipes.data if swipe["book_isbn"]]
+        formatted_books = []
+        for swipe in liked_swipes.data:
+            if swipe["title"] and swipe["author"]:
+                formatted_books.append({
+                    "title": swipe["title"],
+                    "author": swipe["author"],
+                    "largeImageUrl": swipe["cover_image_url"],
+                    "isbn": swipe["book_isbn"]
+                })
         
-        if not isbn_list:
-            return {"Items": []}
-        
-        if not RAKUTEN_APP_ID:
-            raise HTTPException(status_code=500, detail="Rakuten API Application ID not configured")
-        
-        isbn_string = ",".join(isbn_list)
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://app.rakuten.co.jp/services/api/BooksBook/Search/20170404",
-                params={
-                    "format": "json",
-                    "isbn": isbn_string,
-                    "applicationId": RAKUTEN_APP_ID,
-                    "hits": 30
-                }
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                raise HTTPException(status_code=500, detail=f"Rakuten API error: {response.status_code}")
+        return {"Items": formatted_books}
                 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get favorites: {str(e)}")
